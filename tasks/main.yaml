@@ -1,0 +1,14 @@
+---
+
+# NOTE: before it run the imported SLB Real Server Pool task, it will run the dependency
+# role first, which is the fad_slb_real_server role.
+
+# will invoke tasks inside the file named 'fad_slb_real_server_pool.yaml'
+- name: Create/update SLB Real Server Pool entries.
+  tags: [fad_slb_real_server_pool]
+  ansible.builtin.import_tasks: fad_slb_real_server_pool.yaml
+
+# will invoke tasks inside the file named 'fad_slb_real_server_pool_member.yaml'
+- name: Create/update SLB Real Server Pool Member entries.
+  tags: [fad_slb_real_server_pool_member]
+  ansible.builtin.import_tasks: fad_slb_real_server_pool_member.yaml

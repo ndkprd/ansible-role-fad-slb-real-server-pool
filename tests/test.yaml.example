@@ -1,0 +1,74 @@
+---
+
+- name: Update/create FortiADC resources.
+  hosts: all
+  become: false
+  gather_facts: false
+  connection: local
+  vars:
+    # load-balance real-server
+    fad_slb_real_servers:
+    # minimum example
+    - name: svr-01.site-01.ndkprd.com
+      address: 10.10.10.1
+    # complete example
+    - name: svr-02.site-01.ndkprd.com
+      address: 10.10.10.2
+      address6: "::"
+      instance: ""
+      sdn_address_private: disable
+      sdn_connector: disable
+      server_type: static
+      status: enable
+      type: ip
+      fqdn: ""
+  # load-balance pool
+  fad_slb_real_server_pools:
+    # minimum example
+    - name: svr-01.site-01.ndkprd.com
+      real_server_pool_members:
+        - name: svr-01.site-01.ndkprd.com
+          real_server_name: svr-01.site-01.ndkprd.com
+    # complete example
+    - name: svr-02.site-01.ndkprd.com
+      direct_route_ip: 0.0.0.0
+      direct_route_ip6: "::"
+      direct_route_mode: disable
+      health_check: disable
+      health_check_list: ["LB_HLTHCK_HTTP"]
+      health_check_relationship: "AND"
+      pool_type: "ipv4"
+      rs_profile: "NONE"
+      sdn_addr_private: disable
+      type: static
+      real_server_pool_members:
+        address: 0.0.0.0
+        address6: "::"
+        health_check_inherit: enable
+        m_health_check: disable
+        m_health_check_relationship: AND
+        port: 80
+        weight: 1
+        connlimit: 0
+        recover: 0
+        warmup: 0
+        warmrate: 100
+        connection_rate_limit: 0
+        status: enable
+        ssl: disable
+        rs_profile_inherit: enable
+        backup: disable
+        hc_status: enable
+        mysql_group_id: 0
+        mysql_read_only: disable
+        proxy_protocol: none
+        mssql_read_only: disable
+        modify_host: enable
+        # is here for documentation purpose, the value of server pool name will be automatically used
+        # host: host
+        m_health_check_list: []
+        cookie: ""
+        real_server_id: svr-02.site-01.ndkprd.com
+
+  roles:
+    - ndkprd.fad_slb_real_server_pool
