@@ -1,0 +1,4 @@
+# This file contains ignores rule violations for ansible-lint
+
+meta/main.yaml schema[meta]
+tasks/fad_slb_real_server_pool_member.yaml yaml[line-length]
