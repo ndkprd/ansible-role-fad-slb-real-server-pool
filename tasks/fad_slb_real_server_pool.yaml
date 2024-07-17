@@ -1,31 +1,97 @@
 ---
 
-# will do a HTTP Get request against the SLB Real Server Pool endpoint, using
-# fad_slb_real_server_pool entry, where "name" is used as mkey, and  will
-# output the json content of the entry
-# if you want to skip this task, use --skip-tags "debug"
-- name: Get the existing FAD SLB Real Server Pool entries.
-  ansible.builtin.debug:
-    msg: >
-      {{ (lookup('url', fad_api_endpoint.slb_real_server_pool + '&mkey=' +
-      fad_slb_real_server_pool.name, validate_certs=false, split_lines=false,
-      headers=fad_api_header) | from_json).get('payload') }}
-  register: fad_slb_real_server_pool_get_results
-  loop: "{{ fad_slb_real_server_pools }}"
-  loop_control:
-    loop_var: fad_slb_real_server_pool
-    label: "{{ fad_slb_real_server_pool.name }}"
-  tags: [debug, get]
+# Gather existing entries facts by using HTTP GET Request against the
+# FAD SLB Real Server Pool endpoint, and then register the result into the
+# 'fad_slb_real_server_pool_get_results' var. Failed when the HTTP return code
+# is anything other than 200 or 302.
+- name: Gather FAD SLB Real Server Pool facts for create task.
+  ansible.builtin.uri:
+    method: GET
+    url: "{{ fad_api_endpoint.slb_real_server_pool }}"
+    body_format: "{{ fad_api_uri_params.body_format }}"
+    validate_certs: "{{ fad_api_uri_params.validate_certs }}"
+    return_content: "{{ fad_api_uri_params.return_content }}"
+    status_code: "{{ fad_api_uri_params.status_code }}"
+    headers: "{{ fad_api_header }}"
+  register: pool_gather_results
+  failed_when: "pool_gather_results.status not in [200, 302]"
+  tags: [get]
 
-# will do HTTP Get request to check if entry exists or not, if not exists,
-# will create new entry via HTTP Post via the SLB Real Server Pool endpoint,
-# and will be skipped if entry already exist
-# will fail if the returned paylod is not 0 (success) or -15 (duplicate entry)
-# NOTE: the real server member must exists first
+# Will print out the value of the collected facts registered from the
+# previous task.
+- name: Debug out FAD SLB Real Server Pool gathered facts.
+  ansible.builtin.debug:
+    msg: "{{ pool_gather_results.json.payload }}"
+  tags: [debug]
+
+# This task will check if our desired entries in our vars already exist or not
+# in the previously gathered fact. If yes, then that entry will be skipped.
+# If not exist, that entry will be created.
 - name: Add FAD SLB Real Server Pool entry if not exist.
+  vars:
+    existing_pool_facts: "{{ pool_gather_results.json.payload }}"
   ansible.builtin.uri:
     method: POST
     url: "{{ fad_api_endpoint.slb_real_server_pool }}"
+    body_format: "{{ fad_api_uri_params.body_format }}"
+    validate_certs: "{{ fad_api_uri_params.validate_certs }}"
+    return_content: "{{ fad_api_uri_params.return_content }}"
+    status_code: "{{ fad_api_uri_params.status_code }}"
+    headers: "{{ fad_api_header }}"
+    body: |
+      {
+        "mkey": "{{ pool.name | string }}",
+        "direct_route_ip": "{{ pool.direct_route_ip | default('0.0.0.0') | string }}",
+        "direct_route_ip6": "{{ pool.direct_route_ip6 | default('::') | string }}",
+        "direct_route_mode": "{{ pool.direct_route_mode | default('disable') | string }}",
+        "health_check": "{{ pool.health_check | default('enable') | string }}",
+        "health_check_list": "{{ pool.health_check_list | default(['LB_HLTHCK_HTTP']) | join(' ') + ' ' | string }}",
+        "health_check_relationship": "{{ pool.health_check_relationship | default('AND') | string }}",
+        "pool_type": "{{ pool.pool_type | default('ipv4') | string }}",
+        "rs_profile": "{{ pool.rs_profile | default('NONE') | string }}",
+        "sdn_addr_private": "{{ pool.sdn_addr_private | default('disable') | string }}",
+        "type": "{{ pool.type | default('static') | string }}",
+      }
+  register: pool_create_results
+  loop: "{{ fad_slb_real_server_pools }}"
+  loop_control:
+    loop_var: pool
+    label: "{{ pool.name }}"
+  when: >
+    pool.name not in existing_pool_facts | json_query('[].mkey')
+  changed_when: "pool_create_results.json.payload == 0"
+  failed_when: "pool_create_results.json.payload not in [0, -15]"
+  tags: [post]
+
+# Re-gather existing entries facts to prepare for update tasks.
+- name: Re-gather FAD SLB Real Server Pool facts for update task.
+  ansible.builtin.uri:
+    method: GET
+    url: "{{ fad_api_endpoint.slb_real_server_pool }}"
+    body_format: "{{ fad_api_uri_params.body_format }}"
+    validate_certs: "{{ fad_api_uri_params.validate_certs }}"
+    return_content: "{{ fad_api_uri_params.return_content }}"
+    status_code: "{{ fad_api_uri_params.status_code }}"
+    headers: "{{ fad_api_header }}"
+  register: pool_gather_results_update
+  failed_when: "pool_gather_results_update.status not in [200, 302]"
+  tags: [get]
+
+# Will print out the value of the re-gathered entries.
+- name: Debug out FAD SLB Real Server Pool re-gathered facts.
+  ansible.builtin.debug:
+    msg: "{{ pool_gather_results_update.json.payload }}"
+  tags: [debug]
+
+# For each loop, it will check if there's any entry that needs to be updated. Those entry will be
+# updated with the new data if there's a difference between the gathered facts and our desired
+# configuration in the vars.
+- name: Update FAD SLB Real Server Pool entry if entry exists and needs update.
+  vars:
+    current_pool_facts: "{{ pool_gather_results_update.json.payload }}"
+  ansible.builtin.uri:
+    method: PUT
+    url: "{{ fad_api_endpoint.slb_real_server_pool }}&mkey={{ pool.name }}"
     body_format: "{{ fad_api_uri_params.body_format }}"
     validate_certs: "{{ fad_api_uri_params.validate_certs }}"
     return_content: "{{ fad_api_uri_params.return_content }}"
@@ -45,103 +111,39 @@
         "sdn_addr_private": "{{ fad_slb_real_server_pool.sdn_addr_private | default('disable') | string }}",
         "type": "{{ fad_slb_real_server_pool.type | default('static') | string }}",
       }
-  register: fad_slb_real_server_pool_post_results
+  register: pool_update_results
   loop: "{{ fad_slb_real_server_pools }}"
   loop_control:
-    loop_var: fad_slb_real_server_pool
-    label: "{{ fad_slb_real_server_pool.name }}"
+    loop_var: pool
+    label: "{{ pool.name }}"
   when: >
-      (lookup('url', fad_api_endpoint.slb_real_server_pool + '&mkey=' +
-      fad_slb_real_server_pool.name, validate_certs=false, split_lines=false,
-      headers=fad_api_header) | from_json).get('payload').mkey is undefined
-  changed_when: "fad_slb_real_server_pool_post_results.json.payload == 0"
-  failed_when: "fad_slb_real_server_pool_post_results.json.payload not in [0, -15]"
-  tags: [post]
-
-# will do a HTTP Get request first, and then do HTTP Put request if entry already exists
-# and there's a difference between existing data in the device in our configured vars
-- name: Update FAD SLB Real Server Pool entry if entry exists and needs update (v1).
-  ansible.builtin.uri:
-    method: PUT
-    url: "{{ fad_api_endpoint.slb_real_server_pool }}&mkey={{ fad_slb_real_server_pool.name }}"
-    body_format: "{{ fad_api_uri_params.body_format }}"
-    validate_certs: "{{ fad_api_uri_params.validate_certs }}"
-    return_content: "{{ fad_api_uri_params.return_content }}"
-    status_code: "{{ fad_api_uri_params.status_code }}"
-    headers: "{{ fad_api_header }}"
-    body: |
-      {
-        "direct_route_ip": "{{ fad_slb_real_server_pool.direct_route_ip | default('0.0.0.0') | string }}",
-        "direct_route_ip6": "{{ fad_slb_real_server_pool.direct_route_ip6 | default('::') | string }}",
-        "direct_route_mode": "{{ fad_slb_real_server_pool.direct_route_mode | default('disable') | string }}",
-        "health_check": "{{ fad_slb_real_server_pool.health_check | default('enable') | string }}",
-        "health_check_list": "{{ fad_slb_real_server_pool.health_check_list | default(['LB_HLTHCK_ICMP']) | join(' ') + ' ' | string }}",
-        "health_check_relationship": "{{ fad_slb_real_server_pool.health_check_relationship | default('AND') | string }}",
-        "pool_type": "{{ fad_slb_real_server_pool.pool_type | default('ipv4') | string }}",
-        "rs_profile": "{{ fad_slb_real_server_pool.rs_profile | default('NONE') | string }}",
-        "sdn_addr_private": "{{ fad_slb_real_server_pool.sdn_addr_private | default('disable') | string }}",
-        "type": "{{ fad_slb_real_server_pool.type | default('static') | string }}",
-      }
-  register: fad_slb_real_server_pool_put_results
-  loop: "{{ fad_slb_real_server_pools }}"
-  loop_control:
-    loop_var: fad_slb_real_server_pool
-    label: "{{ fad_slb_real_server_pool.name }}"
-  when: >
-    (lookup('url', fad_api_endpoint.slb_real_server_pool + '&mkey=' +
-      fad_slb_real_server_pool.name, validate_certs=false, split_lines=false,
-      headers=fad_api_header) | from_json).get('payload').mkey is defined and
-    (
-      (lookup('url', fad_api_endpoint.slb_real_server_pool + '&mkey=' +
-        fad_slb_real_server_pool.name, validate_certs=false, split_lines=false,
-        headers=fad_api_header) | from_json).get('payload').direct_route_ip !=
-        fad_slb_real_server_pool.direct_route_ip | default("0.0.0.0") | string or
-
-      (lookup('url', fad_api_endpoint.slb_real_server_pool + '&mkey=' +
-        fad_slb_real_server_pool.name, validate_certs=false, split_lines=false,
-        headers=fad_api_header) | from_json).get('payload').direct_route_ip6 !=
-        fad_slb_real_server_pool.direct_route_ip6 | default("::") | string or
-
-      (lookup('url', fad_api_endpoint.slb_real_server_pool + '&mkey=' +
-        fad_slb_real_server_pool.name, validate_certs=false, split_lines=false,
-        headers=fad_api_header) | from_json).get('payload').direct_route_mode !=
-        fad_slb_real_server_pool.direct_route_mode | default("disable") | string or
-
-      (lookup('url', fad_api_endpoint.slb_real_server_pool + '&mkey=' +
-        fad_slb_real_server_pool.name, validate_certs=false, split_lines=false,
-        headers=fad_api_header) | from_json).get('payload').health_check !=
-        fad_slb_real_server_pool.health_check | default("enable") | string or
-
-      (lookup('url', fad_api_endpoint.slb_real_server_pool + '&mkey=' +
-        fad_slb_real_server_pool.name, validate_certs=false, split_lines=false,
-        headers=fad_api_header) | from_json).get('payload').health_check_list !=
-        (fad_slb_real_server_pool.health_check_list | default(["LB_HLTHCK_ICMP"]) |join(" ")) + " " | string or
-
-      (lookup('url', fad_api_endpoint.slb_real_server_pool + '&mkey=' +
-        fad_slb_real_server_pool.name, validate_certs=false, split_lines=false,
-        headers=fad_api_header) | from_json).get('payload').health_check_relationship !=
-        fad_slb_real_server_pool.health_check_relationship | default("AND") | string or
-
-      (lookup('url', fad_api_endpoint.slb_real_server_pool + '&mkey=' +
-        fad_slb_real_server_pool.name, validate_certs=false, split_lines=false,
-        headers=fad_api_header) | from_json).get('payload').pool_type !=
-        fad_slb_real_server_pool.pool_type | default("ipv4") | string or
-
-      (lookup('url', fad_api_endpoint.slb_real_server_pool + '&mkey=' +
-        fad_slb_real_server_pool.name, validate_certs=false, split_lines=false,
-        headers=fad_api_header) | from_json).get('payload').rs_profile !=
-        fad_slb_real_server_pool.rs_profile | default("NONE") | string or
-
-      (lookup('url', fad_api_endpoint.slb_real_server_pool + '&mkey=' +
-        fad_slb_real_server_pool.name, validate_certs=false, split_lines=false,
-        headers=fad_api_header) | from_json).get('payload').sdn_addr_private !=
-        fad_slb_real_server_pool.sdn_addr_private | default("disable") | string or
-
-      (lookup('url', fad_api_endpoint.slb_real_server_pool + '&mkey=' +
-        fad_slb_real_server_pool.name, validate_certs=false, split_lines=false,
-        headers=fad_api_header) | from_json).get('payload').type !=
-        fad_slb_real_server_pool.type | default("static") | string
-    )
-  changed_when: "fad_slb_real_server_pool_put_results.json.payload == 0"
-  failed_when: "fad_slb_real_server_pool_put_results.json.payload not in [0, -15]"
+    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].direct_route_ip') | join) !=
+      (pool.direct_route_ip | default('0.0.0.0') | string)) or
+    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].direct_route_ip6') | join) !=
+      (pool.direct_route_ip6 | default('::') | string)) or
+    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].direct_route_mode') | join) !=
+      (pool.direct_route_mode |  default('disable') | string)) or
+    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].health_check') | join) !=
+      (pool.health_check | default('enable') | string)) or
+    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].health_check_list') | join) !=
+      (pool.health_check_list | default(['LB_HLTHCK_HTTP']) |join(' ') + ' ' | string)) or
+    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].health_check_relationship') | join) !=
+      (pool.health_check_relationship |  default('AND') | string)) or
+    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].pool_type') | join) !=
+      (pool.pool_type | default('ipv4') | string)) or
+    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].rs_profile') | join) !=
+      (pool.rs_profile | default('NONE') | string)) or
+    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].sdn_addr_private') | join) !=
+      (pool.sdn_addr_private | default('disable') | string)) or
+    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].type') | join) !=
+      (pool.type | default('static') | string))
+  changed_when: "pool_update_results.json.payload == 0"
+  failed_when: "pool_update_results.json.payload not in [0, -15]"
   tags: [put]
+
+# Final re-gather and print out for debugging purpose, will be skipped if you skip 'debug' tag.
+- name: Debug out FAD SLB Real Server Pool final value after update task.
+  ansible.builtin.debug:
+    msg: >
+      {{ (lookup('url', fad_api_endpoint.slb_real_server_pool, validate_certs=false, split_lines=false, headers=fad_api_header) | from_json).get('payload') }}
+  tags: [debug, get]
