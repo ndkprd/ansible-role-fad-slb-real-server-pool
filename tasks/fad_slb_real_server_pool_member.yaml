@@ -38,9 +38,8 @@
     return_content: "{{ fad_api_uri_params.return_content }}"
     status_code: "{{ fad_api_uri_params.status_code }}"
     headers: "{{ fad_api_header }}"
-    body: |
+    body: >
       {
-        "mkey": "{{  pool.1.id | string }}",
         "health_check_inherit": "{{  pool.1.health_check_inherit | default('enable') | string }}",
         "m_health_check": "{{  pool.1.m_health_check | default('disable') | string }}",
         "m_health_check_relationship": "{{  pool.1.m_health_check_relationship | default('AND') | string }}",
@@ -72,7 +71,7 @@
     loop_var: pool
     label: "{{  pool.1.real_server_name }} -> {{  pool.0.name }}"
   when: >
-     pool.1.id | string not in existing_pool_members | json_query('[?mkey==`' +  pool.0.name + '`].pool_member[].mkey')
+     pool.1.real_server_name | string not in existing_pool_members | json_query('[?mkey==`' +  pool.0.name + '`].pool_member[].real_server_id')
   changed_when: "pool_member_create_results.json.payload == 0"
   failed_when: "pool_member_create_results.json.payload not in [0, -15]"
   tags: [post]
@@ -99,15 +98,21 @@
     current_pool_member_facts: "{{ pool_member_gather_results_update.json.payload }}"
   ansible.builtin.uri:
     method: PUT
-    url: "{{ fad_api_endpoint.slb_real_server_pool_member }}&pkey={{ pool.0.name }}&mkey={{ pool.1.id | string }}"
+    url:
+      "{{ fad_api_endpoint.slb_real_server_pool_member }}&pkey={{ pool.0.name }}&mkey={{ \
+        (current_pool_member_facts | json_query('[?mkey==`' + pool.0.name \
+        + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name \
+        + '`].mkey') | join | string) }}"
     body_format: "{{ fad_api_uri_params.body_format }}"
     validate_certs: "{{ fad_api_uri_params.validate_certs }}"
     return_content: "{{ fad_api_uri_params.return_content }}"
     status_code: "{{ fad_api_uri_params.status_code }}"
     headers: "{{ fad_api_header }}"
-    body: |
+    body: >
       {
-        "mkey": "{{ pool.1.id | string }}",
+        "mkey": "{{ (current_pool_member_facts | json_query('[?mkey==`' + pool.0.name +
+        '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name +
+        '`].mkey') | join | string) }}",
         "health_check_inherit": "{{ pool.1.health_check_inherit | default('enable') | string }}",
         "m_health_check": "{{ pool.1.m_health_check | default('disable') | string }}",
         "m_health_check_relationship": "{{ pool.1.m_health_check_relationship | default('AND') | string }}",
@@ -133,11 +138,13 @@
         "cookie": "{{ pool.1.real_server_name | default('') | string }}",
         "real_server_id": "{{ pool.1.real_server_name | string }}"
       }
-  register: fad_slb_real_server_pool_member_put_results
+  register: pool_member_update_results
   loop: "{{ fad_slb_real_server_pools | subelements('real_server_pool_members') }}"
   loop_control:
     loop_var: pool
     label: "{{ pool.1.real_server_name }} -> {{ pool.0.name }}"
+  changed_when: "pool_member_update_results.json.payload == 0"
+  failed_when: "pool_member_update_results.json.payload not in [0, -15]"
   when: >
     ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
       + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
