@@ -30,6 +30,7 @@
 - name: Add FAD SLB Real Server Pool Member entry if not exist.
   vars:
     existing_pool_members: "{{ pool_member_gather_results.json.payload }}"
+    query: "[?mkey=='%s'].pool_member[].real_server_id"
   ansible.builtin.uri:
     method: POST
     url: "{{ fad_api_endpoint.slb_real_server_pool_member }}&pkey={{ pool.0.name }}"
@@ -62,16 +63,17 @@
         "modify_host": "{{  pool.1.modify_host | default('enable') | string }}",
         "host": "{{  pool.0.name | default('host') | string }}",
         "m_health_check_list": "{{  pool.1.m_health_check_list| default([]) | join(' ') + ' ' | string }}",
-        "cookie": "{{  pool.1.real_server_name | default('') | string }}",
-        "real_server_id": "{{  pool.1.real_server_name | string }}"
+        "cookie": "{{  pool.1.real_server | default('') | string }}",
+        "real_server_id": "{{  pool.1.real_server | string }}"
       }
   register: pool_member_create_results
   loop: "{{ fad_slb_real_server_pools | subelements('real_server_pool_members') }}"
   loop_control:
     loop_var: pool
-    label: "{{  pool.1.real_server_name }} -> {{  pool.0.name }}"
+    label: "{{  pool.1.real_server }} -> {{  pool.0.name }}"
   when: >
-     pool.1.real_server_name | string not in existing_pool_members | json_query('[?mkey==`' +  pool.0.name + '`].pool_member[].real_server_id')
+     pool.1.real_server | string not in
+      existing_pool_members | json_query(query % pool.0.name)
   changed_when: "pool_member_create_results.json.payload == 0"
   failed_when: "pool_member_create_results.json.payload not in [0, -15]"
   tags: [post]
@@ -96,12 +98,13 @@
 - name: Update FAD SLB Real Server Pool Member entry if entry exists and needs update.
   vars:
     current_pool_member_facts: "{{ pool_member_gather_results_update.json.payload }}"
+    query: "[?mkey=='%s'].pool_member | [0] | [?real_server_id=='%s'].%s | [0]"
   ansible.builtin.uri:
     method: PUT
     url:
       "{{ fad_api_endpoint.slb_real_server_pool_member }}&pkey={{ pool.0.name }}&mkey={{ \
         (current_pool_member_facts | json_query('[?mkey==`' + pool.0.name \
-        + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name \
+        + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server \
         + '`].mkey') | join | string) }}"
     body_format: "{{ fad_api_uri_params.body_format }}"
     validate_certs: "{{ fad_api_uri_params.validate_certs }}"
@@ -111,7 +114,7 @@
     body: >
       {
         "mkey": "{{ (current_pool_member_facts | json_query('[?mkey==`' + pool.0.name +
-        '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name +
+        '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server +
         '`].mkey') | join | string) }}",
         "health_check_inherit": "{{ pool.1.health_check_inherit | default('enable') | string }}",
         "m_health_check": "{{ pool.1.m_health_check | default('disable') | string }}",
@@ -135,89 +138,65 @@
         "modify_host": "{{ pool.1.modify_host | default('enable') | string }}",
         "host": "{{ pool.0.name | default('host') | string }}",
         "m_health_check_list": "{{ pool.1.m_health_check_list| default([]) | join(' ') + ' ' | string }}",
-        "cookie": "{{ pool.1.real_server_name | default('') | string }}",
-        "real_server_id": "{{ pool.1.real_server_name | string }}"
+        "cookie": "{{ pool.1.real_server | default('') | string }}",
+        "real_server_id": "{{ pool.1.real_server | string }}"
       }
   register: pool_member_update_results
   loop: "{{ fad_slb_real_server_pools | subelements('real_server_pool_members') }}"
   loop_control:
     loop_var: pool
-    label: "{{ pool.1.real_server_name }} -> {{ pool.0.name }}"
+    label: "{{ pool.1.real_server }} -> {{ pool.0.name }}"
   changed_when: "pool_member_update_results.json.payload == 0"
   failed_when: "pool_member_update_results.json.payload not in [0, -15]"
   when: >
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].health_check_inherit') | join) != pool.1.health_check_inherit | default('enable') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].m_health_check') | join) != pool.1.m_health_check | default('disable') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].m_health_check_relationship') | join) != pool.1.m_health_check_relationship | default('AND') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].port') | join) != pool.1.port | default('80') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].weight') | join) != pool.1.weight | default('1') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].connlimit') | join) != pool.1.connlimit | default('0') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].recover') | join) != pool.1.recover | default('0') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].warmup') | join) != pool.1.warmup | default('0') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].warmrate') | join) != pool.1.warmrate | default('100') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].status') | join) != pool.1.status | default('enable') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].ssl') | join) != pool.1.ssl | default('disable') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].rs_profile_inherit') | join) != pool.1.rs_profile_inherit | default('enable') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].backup') | join) != pool.1.backup | default('disable') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].hc_status') | join) != pool.1.hc_status | default('1') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].mysql_group_id') | join) != pool.1.mysql_group_id | default('0') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].mysql_read_only') | join) != pool.1.mysql_read_only | default('disable') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].proxy_protocol') | join) != pool.1.proxy_protocol | default('none') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].mssql_read_only') | join) != pool.1.mssql_read_only | default('disable' ) | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].modify_host') | join) != pool.1.modify_host | default('enable') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].host') | join) != pool.0.name | default('host') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].m_health_check_list') | join) != pool.1.m_health_check_list | default([]) | join(' ') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].cookie') | join) != pool.1.real_server_name | default('') | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].real_server_id') | join) != pool.1.real_server_name | string) or
-    ((current_pool_member_facts | json_query('[?mkey==`' + pool.0.name
-      + '`].pool_member') | first | json_query('[?real_server_id==`' + pool.1.real_server_name
-      + '`].\"connection-rate-limit\"') | join) != pool.1.connection_rate_limit | default('0') | string)
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'health_check_inherit'))) !=
+      (pool.1.health_check_inherit | default('enable') | string)) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'm_health_check'))) !=
+      pool.1.m_health_check | default('disable') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'm_health_check_relationship'))) !=
+      pool.1.m_health_check_relationship | default('AND') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'port'))) !=
+      pool.1.port | default('80') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'weight'))) !=
+      pool.1.weight | default('1') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'connlimit'))) !=
+      pool.1.connlimit | default('0') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'recover'))) !=
+      pool.1.recover | default('0') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'warmup'))) !=
+      pool.1.warmup | default('0') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'warmrate'))) !=
+      pool.1.warmrate | default('100') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'status'))) !=
+      pool.1.status | default('enable') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'ssl'))) !=
+      pool.1.ssl | default('disable') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'rs_profile_inherit'))) !=
+      pool.1.rs_profile_inherit | default('enable') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'backup'))) !=
+      pool.1.backup | default('disable') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'hc_status'))) !=
+      pool.1.hc_status | default('1') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'mysql_group_id'))) !=
+      pool.1.mysql_group_id | default('0') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'mysql_read_only'))) !=
+      pool.1.mysql_read_only | default('disable') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'proxy_protocol'))) !=
+      pool.1.proxy_protocol | default('none') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'mssql_read_only'))) !=
+      pool.1.mssql_read_only | default('disable' ) | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'modify_host'))) !=
+      pool.1.modify_host | default('enable') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'host'))) !=
+      pool.0.name | default('host') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'm_health_check_list'))) !=
+      pool.1.m_health_check_list | default([]) | join(' ') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'cookie'))) !=
+      pool.1.real_server | default('') | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'real_server_id'))) !=
+      pool.1.real_server | string) or
+    ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, '\"connection-rate-limit\"'))) !=
+      pool.1.connection_rate_limit | default('0') | string)
   tags: [put]
 
 # Final re-gather and print out for debugging purpose, will be skipped if you skip 'debug' tag.

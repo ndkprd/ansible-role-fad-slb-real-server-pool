@@ -29,7 +29,7 @@
 # If not exist, that entry will be created.
 - name: Add FAD SLB Real Server Pool entry if not exist.
   vars:
-    existing_pool_facts: "{{ pool_gather_results.json.payload }}"
+    existing_pools: "{{ pool_gather_results.json.payload | json_query('[].mkey') }}"
   ansible.builtin.uri:
     method: POST
     url: "{{ fad_api_endpoint.slb_real_server_pool }}"
@@ -58,7 +58,7 @@
     loop_var: pool
     label: "{{ pool.name }}"
   when: >
-    pool.name not in existing_pool_facts | json_query('[].mkey')
+    pool.name not in existing_pools
   changed_when: "pool_create_results.json.payload == 0"
   failed_when: "pool_create_results.json.payload not in [0, -15]"
   tags: [post]
@@ -89,6 +89,7 @@
 - name: Update FAD SLB Real Server Pool entry if entry exists and needs update.
   vars:
     current_pool_facts: "{{ pool_gather_results_update.json.payload }}"
+    query: "[?mkey=='%s'].%s"
   ansible.builtin.uri:
     method: PUT
     url: "{{ fad_api_endpoint.slb_real_server_pool }}&mkey={{ pool.name }}"
@@ -117,25 +118,25 @@
     loop_var: pool
     label: "{{ pool.name }}"
   when: >
-    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].direct_route_ip') | join) !=
+    ((current_pool_facts | json_query(query % (pool.name, 'direct_route_ip')) | join) !=
       (pool.direct_route_ip | default('0.0.0.0') | string)) or
-    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].direct_route_ip6') | join) !=
+    ((current_pool_facts | json_query(query % (pool.name, 'direct_route_ip6')) | join) !=
       (pool.direct_route_ip6 | default('::') | string)) or
-    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].direct_route_mode') | join) !=
+    ((current_pool_facts | json_query(query % (pool.name, 'direct_route_mode')) | join) !=
       (pool.direct_route_mode |  default('disable') | string)) or
-    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].health_check') | join) !=
+    ((current_pool_facts | json_query(query % (pool.name, 'health_check')) | join) !=
       (pool.health_check | default('enable') | string)) or
-    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].health_check_list') | join) !=
+    ((current_pool_facts | json_query(query % (pool.name, 'health_check_list')) | join) !=
       (pool.health_check_list | default(['LB_HLTHCK_HTTP']) |join(' ') + ' ' | string)) or
-    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].health_check_relationship') | join) !=
+    ((current_pool_facts | json_query(query % (pool.name, 'health_check_relationship')) | join) !=
       (pool.health_check_relationship |  default('AND') | string)) or
-    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].pool_type') | join) !=
+    ((current_pool_facts | json_query(query % (pool.name, 'pool_type')) | join) !=
       (pool.pool_type | default('ipv4') | string)) or
-    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].rs_profile') | join) !=
+    ((current_pool_facts | json_query(query % (pool.name, 'rs_profile')) | join) !=
       (pool.rs_profile | default('NONE') | string)) or
-    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].sdn_addr_private') | join) !=
+    ((current_pool_facts | json_query(query % (pool.name, 'sdn_addr_private')) | join) !=
       (pool.sdn_addr_private | default('disable') | string)) or
-    ((current_pool_facts | json_query('[?mkey==`' + pool.name + '`].type') | join) !=
+    ((current_pool_facts | json_query(query % (pool.name, 'type')) | join) !=
       (pool.type | default('static') | string))
   changed_when: "pool_update_results.json.payload == 0"
   failed_when: "pool_update_results.json.payload not in [0, -15]"
