@@ -61,9 +61,9 @@
         "proxy_protocol": "{{  pool.1.proxy_protocol | default('none') | string }}",
         "mssql_read_only": "{{  pool.1.mssql_read_only | default('disable' ) | string }}",
         "modify_host": "{{  pool.1.modify_host | default('enable') | string }}",
-        "host": "{{  pool.0.name | default('host') | string }}",
-        "m_health_check_list": "{{  pool.1.m_health_check_list| default([]) | join(' ') + ' ' | string }}",
-        "cookie": "{{  pool.1.real_server | default('') | string }}",
+        "host": "{{  pool.1.host | default(pool.0.name) | string }}",
+        "m_health_check_list": "{{  pool.1.m_health_check_list | default([]) | join(' ') + ' ' | string }}",
+        "cookie": "{{  pool.1.cookie | default(pool.1.real_server) | string }}",
         "real_server_id": "{{  pool.1.real_server | string }}"
       }
   register: pool_member_create_results
