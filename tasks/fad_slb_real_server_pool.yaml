@@ -167,7 +167,7 @@
     headers: "{{ fad_api_header }}"
   register: pool_delete_results
   when:
-    - delete_mode
+    - delete_mode | default(false)
     - pool.state | default('present') == 'absent'
   changed_when: "pool_delete_results.json.payload == 0"
   failed_when: "pool_delete_results.status not in [200, 302]"
