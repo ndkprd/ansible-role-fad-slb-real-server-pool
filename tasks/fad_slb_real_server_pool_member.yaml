@@ -232,7 +232,8 @@
     label: "{{ pool.1.real_server }} -> {{ pool.0.name }}"
   changed_when: "pool_member_delete_results.json.payload == 0"
   failed_when: "pool_member_delete_results.status not in [200, 302]"
-  when: >
-    pool.0.state | default('present') == "present" and
-    pool.1.state | default('present') == "absent"
+  when:
+    - delete_mode | default(false)
+    - pool.0.state | default('present') == "present"
+    - pool.1.state | default('present') == "absent"
   tags: [delete]
