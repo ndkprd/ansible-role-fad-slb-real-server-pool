@@ -175,8 +175,6 @@
         pool.1.rs_profile_inherit | default('enable') | string) or
       ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'backup'))) !=
         pool.1.backup | default('disable') | string) or
-      ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'hc_status'))) !=
-        pool.1.hc_status | default('1') | string) or
       ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'mysql_group_id'))) !=
         pool.1.mysql_group_id | default('0') | string) or
       ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'mysql_read_only'))) !=
@@ -189,8 +187,6 @@
         pool.1.modify_host | default('enable') | string) or
       ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'host'))) !=
         pool.0.name | default('host') | string) or
-      ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'm_health_check_list'))) !=
-        pool.1.m_health_check_list | default([]) | join(' ') | string) or
       ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'cookie'))) !=
         pool.1.real_server | default('') | string) or
       ((current_pool_member_facts | json_query(query % (pool.0.name, pool.1.real_server, 'real_server_id'))) !=
