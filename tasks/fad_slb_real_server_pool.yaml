@@ -111,7 +111,7 @@
         "pool_type": "{{ pool.pool_type | default('ipv4') | string }}",
         "rs_profile": "{{ pool.rs_profile | default('NONE') | string }}",
         "sdn_addr_private": "{{ pool.sdn_addr_private | default('disable') | string }}",
-        "type": "{{ pool.type | default('static') | string }}",
+        "type": "{{ pool.type | default('static') | string }}"
       }
   register: pool_update_results
   loop: "{{ fad_slb_real_server_pools }}"
