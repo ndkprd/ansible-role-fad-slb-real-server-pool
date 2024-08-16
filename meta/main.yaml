@@ -1,6 +1,8 @@
 ---
 
-dependencies: [ndkprd.fad_slb_real_server]
+dependencies:
+  - ndkprd.fad_slb_real_server
+  - ndkprd.fad_health_check
 
 galaxy_info:
   author: ndkprd
